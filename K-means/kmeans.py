@@ -5,8 +5,7 @@ import pylab as plt
 def standardize(X):
     v = np.var(X, axis = 0)
     a = np.mean(X, axis = 0 )
-    st = (X-[a for _ in range(len(X))]) / v
-    print(st[:10])
+    st = (X-np.array([a for _ in range(len(X))])) / v
     return st
 
 class Kmeans:
