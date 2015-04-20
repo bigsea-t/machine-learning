@@ -31,7 +31,7 @@ class Kmeans:
         for x in range(1,100):
             self.step()
             j = self.distortion()
-            if(j > self.J):
+            if(j > self.J * 0.99):
                 break
             else:
                 self.J = j
