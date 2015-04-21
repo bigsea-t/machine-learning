@@ -48,7 +48,7 @@ class Kmeans:
 
 
 if __name__ == '__main__':
-    data = np.loadtxt("faithful.csv", delimiter=",",skiprows=1,usecols=(1,2))
+    data = np.loadtxt("../dataset/faithful.csv", delimiter=",",skiprows=1,usecols=(1,2))
     k = Kmeans(2,2,data)
     k.solve()
     k.plot()
