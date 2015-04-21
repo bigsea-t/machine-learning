@@ -37,9 +37,8 @@ class Kmeans:
                 self.J = j
 
     def plot(self):
-        gm = k.gamma[:,0]
-        plt.plot(k.X[:,0][k.gamma[:,0] == 1],k.X[:,1][k.gamma[:,0] == 1],'bo')
-        plt.plot(k.X[:,0][k.gamma[:,1] == 1],k.X[:,1][k.gamma[:,1] == 1],'ro')
+        plt.plot(self.X[:,0][self.gamma[:,0] == 1],self.X[:,1][self.gamma[:,0] == 1],'bo')
+        plt.plot(self.X[:,0][self.gamma[:,1] == 1],self.X[:,1][self.gamma[:,1] == 1],'ro')
         plt.show()
 
     def distortion(self):
