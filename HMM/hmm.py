@@ -60,17 +60,23 @@ class HMM:
         K = self.K
 
         # alpha recursion
+        c= []
         alpha = []
-        px_z = [gaussian(X[0, :], mean, cov)
-                for mean, cov in zip(means, covs)]
-        alpha.append(pi * px_z)
+        px_z = np.array([gaussian(X[0, :], mean, cov)
+                         for mean, cov in zip(means, covs)])
+        _alpha = pi * px_z
+        c.append(np.sum(_alpha))
+        alpha.append(_alpha / c[-1])
 
         for n in range(1, N):
             px_z = [gaussian(X[n, :], mean, cov)
                     for mean, cov in zip(means, covs)]
-            sm = np.dot(alpha[n-1], A)
-            alpha.append(px_z * sm)
+            _alpha = px_z * np.dot(alpha[n-1], A)
+            c.append(np.sum(_alpha))
+            alpha.append(_alpha / c[-1])
 
+        c = np.array(c)
+        self.c = c
         self.alpha = np.array(alpha)
 
         # beta recursion
@@ -81,13 +87,13 @@ class HMM:
         for n in reversed(range(0, N-1)):
             px_z = [gaussian(X[n, :], mean, cov)
                     for mean, cov in zip(means, covs)]
-            sm = np.dot(A, px_z * beta[0])
-            beta.insert(0, sm)
+            _beta = np.dot(A, px_z * beta[0] / c[n+1])
+            beta.insert(0, _beta)
 
         self.beta = np.array(beta)
 
         # likelihood function p(X)
-        self.likelihood = np.sum(self.alpha[-1, :])
+        self.likelihood = np.sum(self.c)
 
     def Mstep(self):
         '''
