@@ -95,6 +95,32 @@ class HMM:
         # likelihood function p(X)
         self.likelihood = np.sum(self.c)
 
+    def viterbi(self):
+        pi = self.pi
+        X = self.X
+        means = self.means
+        covs = self.covs
+        A = self.A
+        N = X.shape[0]
+        K = self.K
+
+        phi = []
+        z = []
+        px_z = np.array([gaussian(X[0, :], mean, cov)
+                         for mean, cov in zip(means, covs)])
+        phi.append(pi * px_z)
+
+        for n in range(1, N):
+            px_z = [gaussian(X[n, :], mean, cov)
+                    for mean, cov in zip(means, covs)]
+
+            _phi = px_z * np.max(phi[n-1][:, na] * A, axis=0)
+            phi.append(_phi)
+            z.append(np.argmax(_phi))
+
+        self.phi = np.array(phi)
+        self.z = np.array(z)
+
     def Mstep(self):
         '''
         update parameters {A, pi, (means, covs)}
@@ -143,6 +169,8 @@ class HMM:
         for _ in range(100):
             self.Estep()
             self.Mstep()
+
+        self.viterbi()
 
 
 
