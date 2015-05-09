@@ -3,6 +3,7 @@ import pylab as plt
 
 na = np.newaxis
 
+
 def gaussian(x, mu, sigma):
     '''
     x: D
@@ -27,6 +28,7 @@ def gaussian(x, mu, sigma):
         return A * ex
     else:
         raise("X dimension error")
+
 
 class HMM:
     '''
@@ -60,7 +62,7 @@ class HMM:
         K = self.K
 
         # alpha recursion
-        c= []
+        c = []
         alpha = []
         px_z = np.array([gaussian(X[0, :], mean, cov)
                          for mean, cov in zip(means, covs)])
@@ -102,7 +104,6 @@ class HMM:
         covs = self.covs
         A = self.A
         N = X.shape[0]
-        K = self.K
 
         phi = []
         z = []
@@ -144,10 +145,11 @@ class HMM:
         px_z = np.array([[gaussian(X[n, :], mean, cov)
                          for mean, cov in zip(means, covs)]
                          for n in range(N)])
-        xi = alpha[:-1, :, na] * px_z[1:, na, :] *\
+        xi = alpha[:-1, :, na] * px_z[1:, na, :] * \
             A[na, :, :] * beta[1:, na, :]
 
-        means = np.sum(gamma[:, :, na] * X[:, na, :], axis=0) / sum_gamma[:, na]
+        means = np.sum(gamma[:, :, na] * X[:, na, :], axis=0) \
+            / sum_gamma[:, na]
 
         # x_mean: N*K*D
         x_mean = X[:, na, :] - means[na, :, :]
@@ -166,13 +168,26 @@ class HMM:
         self.A = A
 
     def learn(self):
-        for _ in range(100):
+        for _ in range(10):
             self.Estep()
             self.Mstep()
 
         self.viterbi()
 
+    def check_likelihood(self):
+        alpha = self.alpha
+        beta = self.beta
+        N = self.X.shape[0]
+        c = self.c
 
+        L_alpha = np.sum(alpha[N-1, :])
+        L_beta = np.sum(beta[0, :] * alpha[0, :])
+        L_c = np.prod(c)
+
+        print('Liklihood')
+        print('alpha:', L_alpha)
+        print('beta:', L_beta)
+        print('c:', L_c)
 
 def main():
     K = 20
@@ -190,6 +205,8 @@ def main():
     hmm = HMM(X, means, covs)
 
     hmm.learn()
+
+    hmm.check_likelihood()
 
 if(__name__ == '__main__'):
     main()
