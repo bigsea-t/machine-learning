@@ -11,7 +11,7 @@ warnings.simplefilter("error", RuntimeWarning)
 na = np.newaxis
 sr = sys.stdin.read
 
-def gaussian(x, mu, sigma):
+def gaussian(x, mu, sigma, fmt='normal'):
     '''
     x: D
     mu: D
@@ -19,15 +19,21 @@ def gaussian(x, mu, sigma):
 
     ret: scalar
     '''
-    if(len(x.shape) == 1):
-        d = x.shape[0]
-        det_sig = np.linalg.det(sigma)
-        if(det_sig == 0):
-            print("det cov marix is 0")
-            raise Exception('cov rank')
+    d = x.shape[0]
+    det_sig = np.linalg.det(sigma)
+    inv_sigma = np.linalg.inv(sigma)
+    if(det_sig == 0):
+        print("det cov marix is 0")
+        raise Exception('cov rank')
+    if(fmt == 'normal'):
         A = 1.0 / (2*np.pi)**(d/2.0) * 1.0 / det_sig**(0.5)
-        inv_sigma = np.linalg.inv(sigma)
         return A * np.exp(-1 / 2 * np.dot(np.dot(x - mu, inv_sigma), x - mu))
+    elif(fmt == 'log'):
+        ret = 0
+        ret += np.log(1.0 / (2*np.pi)**(d/2.0))
+        ret += np.log(1.0 / det_sig**(0.5))
+        ret += -1 / 2 * np.dot(np.dot(x - mu, inv_sigma), x - mu)
+        return ret
     else:
         raise("X dimension error")
 
@@ -127,15 +133,15 @@ class HMM:
 
         phi = []
         z = []
-        px_z = np.array([gaussian(X[0, :], mean, cov)
+        px_z = np.array([gaussian(X[0, :], mean, cov, fmt='log')
                          for mean, cov in zip(means, covs)])
-        phi.append(pi * px_z)
+
+        phi.append(np.log(pi) + px_z)
 
         for n in range(1, N):
-            px_z = [gaussian(X[n, :], mean, cov)
+            px_z = [gaussian(X[n, :], mean, cov, fmt='log')
                     for mean, cov in zip(means, covs)]
-
-            _phi = px_z * np.max(phi[n-1][:, na] * A, axis=0)
+            _phi = px_z + np.max(phi[n-1][:, na] + np.log(A), axis=0)
             phi.append(_phi)
             z.append(np.argmax(_phi))
 
@@ -170,15 +176,15 @@ class HMM:
             A[na, :, :] * beta[1:, na, :]
 
         K = means.shape[0]
-        _xi = []
-        for n in range(1, N):
-            _xi.append([])
-            for i in range(K):
-                _xi[n-1].append([])
-                for j in range(K):
-                    _xi[n-1][i].append(1 / c[n] * alpha[n-1][i] *  A[i, j] * px_z[n][j] * beta[n][j])
+        # _xi = []
+        # for n in range(1, N):
+        #     _xi.append([])
+        #     for i in range(K):
+        #         _xi[n-1].append([])
+        #         for j in range(K):
+        #             _xi[n-1][i].append(1 / c[n] * alpha[n-1][i] *  A[i, j] * px_z[n][j] * beta[n][j])
 
-        _xi = np.array(_xi)
+        # _xi = np.array(_xi)
         # if(not (_xi == xi).all()):
         #     print(_xi[10])
         #     print(xi[10])
@@ -204,7 +210,7 @@ class HMM:
         self.A = A
 
     def learn(self):
-        for _ in range(10):
+        for _ in range(1):
             self.Estep()
             self.Mstep()
 
@@ -281,8 +287,7 @@ def stock():
     for i in range(K):
         idx = (i == cls)
         means.append(np.mean(X[idx], axis=0))
-        covs.append(np.identity(D) * 10)
-        # covs.append(np.cov(X[idx].T))
+        covs.append(np.cov(X[idx].T))
     means = np.array(means)
     covs = np.array(covs)
     print(means)
