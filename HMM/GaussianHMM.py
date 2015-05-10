@@ -1,8 +1,15 @@
+import datetime
 import numpy as np
-import pylab as plt
+import pylab as pl
+from matplotlib.finance import quotes_historical_yahoo
+from matplotlib.dates import YearLocator, MonthLocator, DateFormatter
+from sklearn.cluster import KMeans
+import sys
+import warnings
 
+warnings.simplefilter("error", RuntimeWarning)
 na = np.newaxis
-
+sr = sys.stdin.read
 
 def gaussian(x, mu, sigma):
     '''
@@ -19,13 +26,8 @@ def gaussian(x, mu, sigma):
             print("det cov marix is 0")
             raise Exception('cov rank')
         A = 1.0 / (2*np.pi)**(d/2.0) * 1.0 / det_sig**(0.5)
-        return A * np.exp(np.dot(np.dot(mu, sigma), mu))
-    elif(len(x.shape() == 2)):
-        d = x.shape[1]
-        det_sig = np.linalg.det(sigma)
-        A = 1.0 / (2*np.pi)**(d/2.0) * 1.0 / det_sig**(0.5)
-        ex = np.exp(np.sum(mu[:, :, na] * sigma * mu[:, na, :], axis=(1, 2)))
-        return A * ex
+        inv_sigma = np.linalg.inv(sigma)
+        return A * np.exp(-1 / 2 * np.dot(np.dot(x - mu, inv_sigma), x - mu))
     else:
         raise("X dimension error")
 
@@ -42,7 +44,7 @@ class HMM:
 
         # uniform distribution
         K = self.K
-        self.A = np.array([[1 / K**2 for j in range(K)] for i in range(K)])
+        self.A = np.array([[1 / K for j in range(K)] for i in range(K)])
         self.pi = np.array([1 / K for i in range(K)])
 
         self.alpha = None
@@ -68,14 +70,29 @@ class HMM:
                          for mean, cov in zip(means, covs)])
         _alpha = pi * px_z
         c.append(np.sum(_alpha))
+
         alpha.append(_alpha / c[-1])
 
         for n in range(1, N):
             px_z = [gaussian(X[n, :], mean, cov)
                     for mean, cov in zip(means, covs)]
             _alpha = px_z * np.dot(alpha[n-1], A)
+
             c.append(np.sum(_alpha))
-            alpha.append(_alpha / c[-1])
+
+            try:
+                alpha.append(_alpha / c[-1])
+            except RuntimeWarning:
+                print('')
+                print('c:', c[-1])
+                print('n:', n)
+                print('alpha:', _alpha)
+                print('alpha[n-1]', alpha[n-1])
+                print('px_z:', px_z)
+                print('X[n]', X[n])
+                print('means', means)
+                print('covs', covs)
+                raise
 
         c = np.array(c)
         self.c = c
@@ -89,6 +106,9 @@ class HMM:
         for n in reversed(range(0, N-1)):
             px_z = [gaussian(X[n, :], mean, cov)
                     for mean, cov in zip(means, covs)]
+            if(px_z == float("nan")):
+                print(c[n+1])
+                raise
             _beta = np.dot(A, px_z * beta[0] / c[n+1])
             beta.insert(0, _beta)
 
@@ -133,6 +153,7 @@ class HMM:
         A = self.A
         means = self.means
         covs = self.covs
+        c = self.c
 
         # alpha, beta, gamma: N*K
         # xi: N*K*K
@@ -145,8 +166,23 @@ class HMM:
         px_z = np.array([[gaussian(X[n, :], mean, cov)
                          for mean, cov in zip(means, covs)]
                          for n in range(N)])
-        xi = alpha[:-1, :, na] * px_z[1:, na, :] * \
+        xi = 1 / c[:-1, na, na] * alpha[:-1, :, na] * px_z[1:, na, :] * \
             A[na, :, :] * beta[1:, na, :]
+
+        K = means.shape[0]
+        _xi = []
+        for n in range(1, N):
+            _xi.append([])
+            for i in range(K):
+                _xi[n-1].append([])
+                for j in range(K):
+                    _xi[n-1][i].append(1 / c[n] * alpha[n-1][i] *  A[i, j] * px_z[n][j] * beta[n][j])
+
+        _xi = np.array(_xi)
+        # if(not (_xi == xi).all()):
+        #     print(_xi[10])
+        #     print(xi[10])
+        #     print((_xi == xi)[10])
 
         means = np.sum(gamma[:, :, na] * X[:, na, :], axis=0) \
             / sum_gamma[:, na]
@@ -159,7 +195,7 @@ class HMM:
 
         pi = gamma[0, :] / np.sum(gamma[0, :])
 
-        xi_sum = np.sum(xi[1:], axis=0)
+        xi_sum = np.sum(xi, axis=0)
         A = xi_sum / np.sum(xi_sum, axis=1)[:, na]
 
         self.means = means
@@ -189,7 +225,8 @@ class HMM:
         print('beta:', L_beta)
         print('c:', L_c)
 
-def main():
+
+def synth():
     K = 20
     N = 200
     D = 3
@@ -208,5 +245,94 @@ def main():
 
     hmm.check_likelihood()
 
+
+def stock():
+    # Downloading the data
+    date1 = datetime.date(1995, 1, 1)  # start date
+    date2 = datetime.date(2012, 1, 6)  # end date
+    # get quotes from yahoo finance
+    quotes = quotes_historical_yahoo("INTC", date1, date2)
+    if len(quotes) == 0:
+        raise SystemExit
+
+    # unpack quotes
+    dates = np.array([q[0] for q in quotes], dtype=int)
+    close_v = np.array([q[2] for q in quotes])
+    volume = np.array([q[2] for q in quotes])[1:]
+
+    # take diff of close value
+    # this makes len(diff) = len(close_t) - 1
+    # therefore, others quantity also need to be shifted
+    diff = close_v[1:] - close_v[:-1]
+    dates = dates[1:]
+    close_v = close_v[1:]
+
+    # pack diff and volume for training
+    X = np.column_stack([diff, volume])
+    N = X.shape[0]
+    D = X.shape[1]
+    K = 5
+
+    km = KMeans(n_clusters=K)
+    cls = km.fit_predict(X)
+
+    means = []
+    covs = []
+    for i in range(K):
+        idx = (i == cls)
+        means.append(np.mean(X[idx], axis=0))
+        covs.append(np.identity(D) * 10)
+        # covs.append(np.cov(X[idx].T))
+    means = np.array(means)
+    covs = np.array(covs)
+    print(means)
+    print(covs)
+
+    model = HMM(X, means, covs)
+    model.learn()
+    model.check_likelihood()
+
+    print("means and vars of each hidden state")
+    for i in range(K):
+        print("%dth hidden state" % i)
+        print("mean = ", model.means[i])
+        print("var = ", np.diag(model.covs[i]))
+        print("")
+
+
+    hidden_states = model.z
+    print("hidden states")
+    print(hidden_states)
+    trans = model.A
+    print("transition matrix")
+    print(trans)
+
+    years = YearLocator()   # every year
+    months = MonthLocator()  # every month
+    yearsFmt = DateFormatter('%Y')
+    fig = pl.figure()
+    ax = fig.add_subplot(111)
+
+    for i in range(K):
+        # use fancy indexing to plot data in each state
+        idx = (hidden_states == i)
+        ax.plot_date(dates[idx], close_v[idx], 'o', label="%dth hidden state" % i)
+    ax.legend()
+
+    # format the ticks
+    ax.xaxis.set_major_locator(years)
+    ax.xaxis.set_major_formatter(yearsFmt)
+    ax.xaxis.set_minor_locator(months)
+    ax.autoscale_view()
+
+    # format the coords message box
+    ax.fmt_xdata = DateFormatter('%Y-%m-%d')
+    ax.fmt_ydata = lambda x: '$%1.2f' % x
+    ax.grid(True)
+
+    fig.autofmt_xdate()
+    pl.savefig("fig.png")
+
+
 if(__name__ == '__main__'):
-    main()
+    stock()
