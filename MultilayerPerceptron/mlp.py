@@ -12,10 +12,20 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
+def softmax(x):
+    return np.exp(x) / np.sum(np.exp(x))
+
+
 class MultilayerPerceptron:
-    def __init__(self, num_hidden_units=5, max_itr=100000, eta_0=1, threshold=1e-10):
+    def __init__(self,
+                 num_hidden_units=5,
+                 max_itr=100000,
+                 eta_0=1,
+                 threshold=1e-10,
+                 activation_func='sigmoid',
+                 output_func='sigmoid'):
         self.H = num_hidden_units
-        self.w_o = None  # H*1
+        self.w_o = None  # H*O
         self.w_h = None  # D*H
         self.max_itr = max_itr
         self.eta_0 = eta_0
@@ -24,9 +34,18 @@ class MultilayerPerceptron:
         self.old_err = float('Inf')
         self.threshold = threshold
 
+        self.activate = sigmoid
+
+        if(output_func == 'sigmoid'):
+            self.activate_out = sigmoid
+        elif(output_func == 'softmax'):
+            self.activate_out = softmax
+        else:
+            raise
+
     def _forward(self, x):
-        h = sigmoid(np.sum(x[:, na] * self.w_h[:, :], axis=0))
-        y = sigmoid(np.dot(h, self.w_o))
+        h = self.activate(np.sum(x[:, na] * self.w_h[:, :], axis=0))
+        y = self.activate_out(np.sum(h[:, na] * self.w_o[:, :], axis=0))
         return y, h
 
     def predict(self, _X):
@@ -35,9 +54,10 @@ class MultilayerPerceptron:
         return Y
 
     def backward(self, x, t, y, h):
-        delta_o = (y - t) * y * (1 - y)  # 1
-        Ew_o = h * delta_o  # H
-        delta_h = delta_o * self.w_o * h * (1 - h)  # H
+        delta_o = (y - t) * y * (1 - y)  # O
+        Ew_o = h[:, na] * delta_o[na, :]  # H * O
+        delta_h = np.sum(delta_o[na, :] * self.w_o[:, :] *
+                         h[:, na] * (1 - h[:, na]), axis=1)  # H
         Ew_h = x[:, na] * delta_h[na, :]  # D * H
         return Ew_o, Ew_h
 
@@ -51,10 +71,10 @@ class MultilayerPerceptron:
 
         N = X.shape[0]
         D = X.shape[1]
+        O = T.shape[1]
 
         self.w_h = np.random.rand(D, self.H) * 2 - 1
-        self.w_o = np.random.rand(self.H) * 2 - 1
-
+        self.w_o = np.random.rand(self.H, O) * 2 - 1
 
         for i in range(self.max_itr):
             err = 0
@@ -87,9 +107,10 @@ class MultilayerPerceptron:
 
         N = X.shape[0]
         D = X.shape[1]
+        O = T.shape[1]
 
         self.w_h = np.random.rand(D, self.H) * 2 - 1
-        self.w_o = np.random.rand(self.H) * 2 - 1
+        self.w_o = np.random.rand(self.H, O) * 2 - 1
 
         for i in range(self.max_itr):
             index = np.random.random_integers(N) - 1
@@ -106,6 +127,14 @@ class MultilayerPerceptron:
         discr = np.zeros(Y.shape)
         discr[Y > 0.5] = 1
         return discr
+
+    def score(self, X, T):
+        Y = self.predict(X)
+        Discr = np.zeros(Y.shape)
+        Discr[Y > 0.5] = 1
+        Score = np.zeros(Y.shape)
+        Score[Discr == T] = 1
+        return Score
 
 
 def main():
@@ -126,14 +155,17 @@ def main():
                 continue
             cls_1 = i
             cls_2 = j
-            mlp = MultilayerPerceptron()
-            X = np.r_[train_set[cls_1], train_set[cls_2]]
-            T = np.r_[np.zeros(train_set[cls_1].shape[0]), np.ones(train_set[cls_2].shape[0])]
-            mlp.fit_online(X, T)
+            mlp = MultilayerPerceptron(max_itr=100)
             X = np.r_[test_set[cls_1], test_set[cls_2]]
-            T = np.r_[np.zeros(test_set[cls_1].shape[0]), np.ones(test_set[cls_2].shape[0])]
+            num_zeros = test_set[cls_1].shape[0]
+            num_ones = test_set[cls_2].shape[0]
+            _T = np.r_[np.zeros(num_zeros), np.ones(num_ones)]
+            T = _T[:, na]
+            mlp.fit_online(X, T)
             Y = mlp.predict(X)
             E = np.absolute(Y - T)
+            print('------------------')
+            print(np.average(mlp.score(X, T)))
             print(np.average(E))
             plt.plot(train_set[cls_1][:, 0], train_set[cls_1][:,1], 'bo')
             plt.plot(train_set[cls_2][:, 0], train_set[cls_2][:,1], 'ro')
