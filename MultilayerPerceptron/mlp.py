@@ -96,7 +96,6 @@ class MultilayerPerceptron:
             if(delta_err < threashold):
                 break
 
-
     def fit_online(self, _X, _T):
         self.std = np.std(_X, axis=0)
         self.mean = np.mean(_X, axis=0)
@@ -128,14 +127,68 @@ class MultilayerPerceptron:
         discr[Y > 0.5] = 1
         return discr
 
-    def score(self, X, T):
+    def err_rate(self, X, T):
         Y = self.predict(X)
         Discr = np.zeros(Y.shape)
         Discr[Y > 0.5] = 1
         Score = np.zeros(Y.shape)
-        Score[Discr == T] = 1
-        return Score
+        Score[Discr != T] = 1
+        return np.average(Score, axis=0)
 
+
+def single_output(train_set, test_set, max_itr=1000):
+    K = 5
+    err_rate = np.zeros([K, K])
+    for i in range(5):
+        for j in range(5):
+            if(j <= i):
+                continue
+            cls_1 = i
+            cls_2 = j
+            mlp = MultilayerPerceptron(max_itr=max_itr)
+            X = np.r_[test_set[cls_1], test_set[cls_2]]
+            num_zeros = test_set[cls_1].shape[0]
+            num_ones = test_set[cls_2].shape[0]
+            _T = np.r_[np.zeros(num_zeros), np.ones(num_ones)]
+            T = _T[:, na]
+            mlp.fit_online(X, T)
+            Y = mlp.predict(X)
+            E = np.absolute(Y - T)
+            err_rate[i, j] = np.average(mlp.err_rate(X, T))
+
+    return err_rate
+
+
+def multi_output(train_set, test_set, max_itr=1000):
+    K = 5
+    sizes = list(map(lambda a: a.shape[0], train_set))
+    T = []
+    for i in range(K):
+        _T = np.zeros([sizes[i], K])
+        _T[:, i] = 1.0
+        T.append(_T)
+
+    sizes_test = list(map(lambda a: a.shape[0], test_set))
+    T_test = []
+    for i in range(K):
+        _T = np.zeros([sizes_test[i], K])
+        _T[:, i] = 1.0
+        T_test.append(_T)
+
+    T = np.concatenate(T, axis=0)
+    X = np.concatenate(train_set, axis=0)
+    T_test = np.concatenate(T_test, axis=0)
+    X_test = np.concatenate(test_set, axis=0)
+
+    mlp = MultilayerPerceptron(max_itr=max_itr, output_func='softmax')
+
+    mlp.fit_online(X, T)
+
+    Y = mlp.predict(X_test)
+
+    E = np.absolute(T_test - Y)
+
+    return mlp.err_rate(X, T)
 
 def main():
     train_data = np.loadtxt("../dataset/vowel/train.txt", delimiter=" ")
@@ -149,27 +202,55 @@ def main():
                 for i in range(5)]
     test_set = [np.c_[ts, np.ones(ts.shape[0])] for ts in _test_set]
 
-    for i in range(5):
-        for j in range(5):
-            if(j <= i):
-                continue
-            cls_1 = i
-            cls_2 = j
-            mlp = MultilayerPerceptron(max_itr=100)
-            X = np.r_[test_set[cls_1], test_set[cls_2]]
-            num_zeros = test_set[cls_1].shape[0]
-            num_ones = test_set[cls_2].shape[0]
-            _T = np.r_[np.zeros(num_zeros), np.ones(num_ones)]
-            T = _T[:, na]
-            mlp.fit_online(X, T)
-            Y = mlp.predict(X)
-            E = np.absolute(Y - T)
-            print('------------------')
-            print(np.average(mlp.score(X, T)))
-            print(np.average(E))
-            plt.plot(train_set[cls_1][:, 0], train_set[cls_1][:,1], 'bo')
-            plt.plot(train_set[cls_2][:, 0], train_set[cls_2][:,1], 'ro')
-            plt.savefig('fig.png')
+    single = single_output(train_set, test_set, 1000)
+    np.savetxt('single_1000.csv', single, delimiter=',')
+    multi = multi_output(train_set, test_set, 10000)
+    np.savetxt('multi_10000.csv', multi, delimiter=',')
+
+    K = 5
+    exp_itr = 10
+
+    single = []
+    max_itr = 2
+    itr = 15
+    for i in range(itr):
+        _single = np.zeros([K, K])
+        for _ in range(exp_itr):
+            _single += single_output(train_set, test_set, max_itr)
+        _single /= exp_itr
+        single.append(_single)
+        max_itr *= 2
+    single = np.array(single)
+
+    plt.figure()
+
+    for i in range(K):
+        for j in range(K):
+            if(i <= j):
+                plt.plot(np.arange(itr), single[:, i, j],
+                         label="{0}:{1}".format(i, j))
+
+    plt.legend(ncol=3)
+    plt.savefig("single.png")
+
+    plt.figure()
+
+    multi = []
+    max_itr = 2
+    for i in range(itr):
+        _multi = np.zeros(K)
+        for _ in range(exp_itr):
+            _multi += multi_output(train_set, test_set, max_itr)
+        _multi /= exp_itr
+        multi.append(_multi)
+        max_itr *= 2
+    multi = np.array(multi)
+
+    for i in range(K):
+        plt.plot(np.arange(itr), multi[:, i], label="{0}".format(i))
+
+    plt.legend()
+    plt.savefig("mult.png")
 
 if __name__ == '__main__':
     main()
